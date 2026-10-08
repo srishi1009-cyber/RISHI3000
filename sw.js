@@ -1,4 +1,4 @@
-const CACHE_NAME = "rishi-music-v9";
+const CACHE_NAME = "rishi-music-v7";
 
 const APP_FILES = [
   "./",
@@ -10,84 +10,177 @@ const APP_FILES = [
   "./icon-512.png"
 ];
 
-self.addEventListener("install", event => {
+
+// ================================
+// INSTALL
+// ================================
+
+self.addEventListener("install", function (event) {
+
   event.waitUntil(
+
     caches.open(CACHE_NAME)
-      .then(cache =>
-        Promise.all(
-          APP_FILES.map(file =>
-            fetch(file, { cache: "no-store" })
-              .then(response => {
-                if (response.ok) {
-                  return cache.put(file, response);
+
+      .then(function (cache) {
+
+        return Promise.all(
+
+          APP_FILES.map(function (file) {
+
+            return fetch(file, {
+              cache: "no-store"
+            })
+              .then(function (response) {
+
+                if (!response.ok) {
+                  throw new Error(
+                    "Could not cache: " + file
+                  );
                 }
+
+                return cache.put(
+                  file,
+                  response
+                );
+
               })
-              .catch(error =>
-                console.warn("Cache failed:", file, error)
-              )
-          )
-        )
-      )
-      .then(() => self.skipWaiting())
-  );
-});
+              .catch(function (error) {
 
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys()
-      .then(names =>
-        Promise.all(
-          names.map(name => {
-            if (
-              name.startsWith("rishi-music-") &&
-              name !== CACHE_NAME
-            ) {
-              return caches.delete(name);
-            }
+                console.warn(
+                  "Cache skipped:",
+                  file,
+                  error
+                );
+
+              });
+
           })
-        )
-      )
-      .then(() => self.clients.claim())
+
+        );
+
+      })
+
+      .then(function () {
+
+        return self.skipWaiting();
+
+      })
+
   );
+
 });
 
-self.addEventListener("fetch", event => {
 
-  if (event.request.method !== "GET") {
+// ================================
+// ACTIVATE
+// ================================
+
+self.addEventListener("activate", function (event) {
+
+  event.waitUntil(
+
+    caches.keys()
+
+      .then(function (cacheNames) {
+
+        return Promise.all(
+
+          cacheNames.map(function (cacheName) {
+
+            if (
+              cacheName.startsWith("rishi-music-") &&
+              cacheName !== CACHE_NAME
+            ) {
+
+              return caches.delete(cacheName);
+
+            }
+
+          })
+
+        );
+
+      })
+
+      .then(function () {
+
+        return self.clients.claim();
+
+      })
+
+  );
+
+});
+
+
+// ================================
+// FETCH
+// ================================
+
+self.addEventListener("fetch", function (event) {
+
+  const request = event.request;
+
+  // Only GET requests
+  if (request.method !== "GET") {
     return;
   }
 
-  const requestURL = new URL(event.request.url);
+  // Ignore blob audio URLs
+  if (request.url.startsWith("blob:")) {
+    return;
+  }
 
-  if (requestURL.origin !== self.location.origin) {
+  const url = new URL(request.url);
+
+  // Only handle this GitHub Pages app
+  if (
+    url.origin !== self.location.origin
+  ) {
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
 
+    fetch(request)
+
+      .then(function (response) {
+
+        // Update cached app files
         if (response && response.ok) {
+
           const copy = response.clone();
 
           caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, copy);
+            .then(function (cache) {
+
+              cache.put(request, copy);
+
             })
-            .catch(() => {});
+            .catch(function () {});
+
         }
 
         return response;
+
       })
-      .catch(() =>
-        caches.match(event.request)
-          .then(cached => {
+
+      .catch(function () {
+
+        return caches.match(request)
+
+          .then(function (cached) {
+
             if (cached) {
               return cached;
             }
 
             return caches.match("./index.html");
-          })
-      )
+
+          });
+
+      })
+
   );
+
 });
